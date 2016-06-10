@@ -583,6 +583,15 @@ public class SwiftNativeFileSystemStore {
   }
 
   /**
+   * Is the file system location aware
+   *
+   * @return true if the file system is location aware
+   */
+  public boolean isLocationAware() {
+    return swiftRestClient.isLocationAware();
+  }
+  
+  /**
    * Does the object exist
    *
    * @param path object path

@@ -251,11 +251,13 @@ public class SwiftNativeFileSystem extends FileSystem {
     // Check if requested file in Swift is more than 5Gb. In this case
     // each block has its own location -which may be determinable
     // from the Swift client API, depending on the remote server
-    final FileStatus[] listOfFileBlocks = store.listSubPaths(file.getPath(),
-                                                             false,
-                                                             true);
+    FileStatus[] listOfFileBlocks = null;
+    if(file.getLen() == 0) {
+    	listOfFileBlocks = store.listSubPaths(file.getPath(), false, true);
+    }
+
     List<URI> locations = new ArrayList<URI>();
-    if (listOfFileBlocks.length > 1) {
+    if (listOfFileBlocks != null && listOfFileBlocks.length > 1) {
       for (FileStatus fileStatus : listOfFileBlocks) {
         if (SwiftObjectPath.fromPath(uri, fileStatus.getPath())
                 .equals(SwiftObjectPath.fromPath(uri, file.getPath()))) {
@@ -291,6 +293,44 @@ public class SwiftNativeFileSystem extends FileSystem {
     return new BlockLocation[]{
             new BlockLocation(names, hosts, 0, file.getLen())
     };
+  }
+
+  /**
+   * Return an array containing hostnames, offset and size of
+   * portions of the given file.  For a nonexistent
+   * file or regions, null will be returned.
+   *
+   * @param p path is used to identify an FS since an FS could have
+   *          another FS that it could be delegating the call to
+   * @param start offset into the given file
+   * @param len length for which to get locations for
+   */
+  public BlockLocation[] getFileBlockLocations(Path p,
+      long start, long len) throws IOException {
+    if (p == null) {
+      return null;
+    }
+
+    if(store.isLocationAware()){
+	    FileStatus file = getFileStatus(p);
+	    return getFileBlockLocations(file, start, len);
+    }
+    else {
+	    if (start < 0 || len < 0) {
+	      throw new IllegalArgumentException("Negative start or len parameter" +
+	                                         " to getFileBlockLocations");
+	    }
+	    if (len <= start) {
+	      return new BlockLocation[0];
+	    }
+
+	    String[] name = {SwiftProtocolConstants.BLOCK_LOCATION};
+	    String[] host = { "localhost" };
+	    String[] topology={SwiftProtocolConstants.TOPOLOGY_PATH};
+	    return new BlockLocation[] {
+	      new BlockLocation(name, host, topology,0, len)
+	    };
+    }
   }
 
   /**
