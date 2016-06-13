@@ -357,7 +357,11 @@ public class SwiftNativeFileSystemStore {
   }
 
   private String getRack(String url) {
-    return dnsToSwitchMapping.resolve(Arrays.asList(url)).get(0);
+    List<String> list = dnsToSwitchMapping.resolve(Arrays.asList(url));
+    if(list == null || list.isEmpty()) {
+      return "";
+    }
+    return list.get(0);
   }
 
   /**
