@@ -233,6 +233,12 @@ public final class SwiftRestClient {
   private final int blocksizeKB;
   private final int bufferSizeKB;
 
+  /**
+   * The maximum number of results that will be returned when listing the contents
+   * of a container
+   */
+  private final int containerListLimit;
+
   private final DurationStatsTable durationStats = new DurationStatsTable();
   /**
    * objects query endpoint. This is synchronized
@@ -541,6 +547,16 @@ public final class SwiftRestClient {
                           + SWIFT_REQUEST_SIZE
                           + ": " + bufferSizeKB);
       }
+
+
+      containerListLimit = conf.getInt(SWIFT_CONTAINER_LIST_LIMIT,
+                        DEFAULT_CONTAINER_LIST_LIMIT);
+      if (containerListLimit <= 0 || containerListLimit > 10000) {
+          throw new SwiftConfigurationException("Invalid container list limit set in "
+                            + SwiftProtocolConstants.SWIFT_CONTAINER_LIST_LIMIT
+                            + ": " + containerListLimit);
+      }
+
     } catch (NumberFormatException e) {
       //convert exceptions raised parsing ints and longs into
       // SwiftConfigurationException instances
@@ -872,6 +888,8 @@ public final class SwiftRestClient {
    * Find objects in a directory
    *
    * @param path path prefix
+   * @param listDeep
+   * @param marker
    * @param requestHeaders optional request headers
    * @return byte[] file data or null if the object was not found
    * @throws IOException on IO Faults
@@ -880,6 +898,7 @@ public final class SwiftRestClient {
    */
   public byte[] listDeepObjectsInDirectory(SwiftObjectPath path,
                                            boolean listDeep,
+                                           String marker,
                                        final Header... requestHeaders)
           throws IOException {
     preRemoteCommand("listDeepObjectsInDirectory");
@@ -904,6 +923,15 @@ public final class SwiftRestClient {
             .append("/?prefix=")
             .append(object)
             .append("&format=json");
+
+    if(marker != null) {
+        if (marker.startsWith("/")) {
+          marker = marker.substring(1);
+        }
+    	dataLocationURI.append("&marker=").append(marker);
+    }
+
+    dataLocationURI.append("&limit=").append(containerListLimit);
 
     //in listing deep set param to false
     if (listDeep == false) {
@@ -1915,6 +1943,10 @@ public final class SwiftRestClient {
 
   public int getThrottleDelay() {
     return throttleDelay;
+  }
+
+  public int getContainerListLimit() {
+    return containerListLimit;
   }
 
   /**

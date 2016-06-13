@@ -264,4 +264,16 @@ public class SwiftProtocolConstants {
    * Default timeout in milliseconds for connection requests: {@value}
    */
   static final int DEFAULT_CONNECT_TIMEOUT = 15000;
+
+  /**
+   * The maximum number of results that will be returned when listing the contents
+   * of a container, the upper bound maximum is 10000: {@value}
+   */
+  public static final String SWIFT_CONTAINER_LIST_LIMIT =
+          FS_SWIFT + ".container.list.limit";
+
+  /**
+   * Default container list limit {@value}
+   */
+  public static final int DEFAULT_CONTAINER_LIST_LIMIT = 10000;
 }

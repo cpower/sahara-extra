@@ -408,76 +408,83 @@ public class SwiftNativeFileSystemStore {
   private List<FileStatus> listDirectory(SwiftObjectPath path,
                                          boolean listDeep,
                                          boolean newest) throws IOException {
-    final byte[] bytes;
     final ArrayList<FileStatus> files = new ArrayList<FileStatus>();
     final Path correctSwiftPath = getCorrectSwiftPath(path);
-    try {
-      bytes = swiftRestClient.listDeepObjectsInDirectory(path, listDeep);
-    } catch (FileNotFoundException e) {
-      if (LOG.isDebugEnabled()) {
-        LOG.debug("" +
-                "File/Directory not found " + path);
-      }
-      if (SwiftUtils.isRootDir(path)) {
-        return Collections.emptyList();
-      } else {
-        throw e;
-      }
-    } catch (SwiftInvalidResponseException e) {
-      //bad HTTP error code
-      if (e.getStatusCode() == HttpStatus.SC_NO_CONTENT) {
-        //this can come back on a root list if the container is empty
+
+    String marker = null;
+    int pageSize = 0;
+
+    do {
+      byte[] bytes;
+      try {
+        bytes = swiftRestClient.listDeepObjectsInDirectory(path, listDeep, marker);
+      } catch (FileNotFoundException e) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("" +
+                  "File/Directory not found " + path);
+        }
         if (SwiftUtils.isRootDir(path)) {
           return Collections.emptyList();
         } else {
-          //NO_CONTENT returned on something other than the root directory;
-          //see if it is there, and convert to empty list or not found
-          //depending on whether the entry exists.
-          FileStatus stat = getObjectMetadata(correctSwiftPath, newest);
-
-          if (stat.isDir()) {
-            //it's an empty directory. state that
+          throw e;
+        }
+      } catch (SwiftInvalidResponseException e) {
+        //bad HTTP error code
+        if (e.getStatusCode() == HttpStatus.SC_NO_CONTENT) {
+          //this can come back on a root list if the container is empty
+          if (SwiftUtils.isRootDir(path)) {
             return Collections.emptyList();
           } else {
-            //it's a file -return that as the status
-            files.add(stat);
-            return files;
+            //NO_CONTENT returned on something other than the root directory;
+            //see if it is there, and convert to empty list or not found
+            //depending on whether the entry exists.
+            FileStatus stat = getObjectMetadata(correctSwiftPath, newest);
+
+            if (stat.isDir()) {
+              //it's an empty directory. state that
+              return Collections.emptyList();
+            } else {
+              //it's a file -return that as the status
+              files.add(stat);
+              return files;
+            }
           }
+        } else {
+          //a different status code: rethrow immediately
+          throw e;
         }
-      } else {
-        //a different status code: rethrow immediately
-        throw e;
-      }
-    }
-
-    final CollectionType collectionType = JSONUtil.getJsonMapper().getTypeFactory().
-            constructCollectionType(List.class, SwiftObjectFileStatus.class);
-
-    final List<SwiftObjectFileStatus> fileStatusList =
-            JSONUtil.toObject(new String(bytes), collectionType);
-
-    //this can happen if user lists file /data/files/file
-    //in this case swift will return empty array
-    if (fileStatusList.isEmpty()) {
-      SwiftFileStatus objectMetadata = getObjectMetadata(correctSwiftPath,
-                                                         newest);
-      if (objectMetadata.isFile()) {
-        files.add(objectMetadata);
       }
 
-      return files;
-    }
+      final CollectionType collectionType = JSONUtil.getJsonMapper().getTypeFactory().
+              constructCollectionType(List.class, SwiftObjectFileStatus.class);
 
-    for (SwiftObjectFileStatus status : fileStatusList) {
-      if (status.getName() != null) {
-          files.add(new SwiftFileStatus(status.getBytes(),
-                  status.getBytes() == 0,
-                  1,
-                  getBlocksize(),
-                  status.getLast_modified().getTime(),
-                  getCorrectSwiftPath(new Path(status.getName()))));
+      final List<SwiftObjectFileStatus> fileStatusList =
+              JSONUtil.toObject(new String(bytes), collectionType);
+
+      //this can happen if user lists file /data/files/file
+      //in this case swift will return empty array
+      if (fileStatusList.isEmpty()) {
+        SwiftFileStatus objectMetadata = getObjectMetadata(correctSwiftPath,
+                                                           newest);
+        if (objectMetadata.isFile()) {
+          files.add(objectMetadata);
+        }
+
+        return files;
       }
-    }
+
+      for (SwiftObjectFileStatus status : fileStatusList) {
+        if (status.getName() != null) {
+            files.add(new SwiftFileStatus(status.getBytes(),
+                    status.getBytes() == 0,
+                    1,
+                    getBlocksize(),
+                    status.getLast_modified().getTime(),
+                    getCorrectSwiftPath(new Path(status.getName()))));
+        }
+      }
+
+    } while (pageSize == swiftRestClient.getContainerListLimit());
 
     return files;
   }
@@ -590,7 +597,7 @@ public class SwiftNativeFileSystemStore {
   public boolean isLocationAware() {
     return swiftRestClient.isLocationAware();
   }
-  
+
   /**
    * Does the object exist
    *
